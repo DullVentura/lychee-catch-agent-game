@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lychee Catch — built from one prompt</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1b1030; height: 100%; }
+  body { display: flex; align-items: center; justify-content: center; font-family: sans-serif; }
+  #wrap { position: relative; width: min(96vw, 720px); }
+  canvas { display: block; width: 100%; border-radius: 12px; background: #2a1650; }
+  #hint { color: #cfc4f5; text-align: center; font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="720" height="480"></canvas>
+  <div id="hint">Move: arrow keys or mouse &middot; Catch red lychees, dodge the rotten ones &middot; 60 seconds, 3 lives</div>
+</div>
+<script>
+"use strict";
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+const state = {
+  mode: "start", // start | play | over
+  score: 0, lives: 3, misses: 0, timeLeft: 60,
+  basketX: W / 2, keys: {}, fruits: [], spawnT: 0, elapsed: 0,
+};
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function spawnFruit() {
+  const rotten = Math.random() < 0.22;
+  state.fruits.push({
+    x: rand(30, W - 30), y: -20,
+    vy: rand(120, 170) + state.elapsed * 2.2,
+    vx: rand(-25, 25), r: 15,
+    rotten, wobble: rand(0, Math.PI * 2),
+  });
+}
+
+function drawLychee(f) {
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  // bumpy lychee skin: red for good, dark purple-brown for rotten
+  ctx.fillStyle = f.rotten ? "#4a2b3a" : "#e8354f";
+  ctx.beginPath();
+  ctx.arc(0, 0, f.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = f.rotten ? "#5d3648" : "#ff5b74";
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * f.r * 0.72, Math.sin(a) * f.r * 0.72, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = f.rotten ? "#7a4a5e" : "#ffd7de";
+  ctx.beginPath();
+  ctx.arc(-5, -6, 4, 0, Math.PI * 2);
+  ctx.fill();
+  if (f.rotten) {
+    ctx.strokeStyle = "#2c1620";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-8, -2); ctx.lineTo(8, 6);
+    ctx.moveTo(8, -4); ctx.lineTo(-6, 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBasket() {
+  const bw = 110, bh = 26, y = H - 44;
+  ctx.fillStyle = "#8a5a2b";
+  ctx.beginPath();
+  ctx.moveTo(state.basketX - bw / 2, y);
+  ctx.lineTo(state.basketX + bw / 2, y);
+  ctx.lineTo(state.basketX + bw / 2 - 10, y + bh);
+  ctx.lineTo(state.basketX - bw / 2 + 10, y + bh);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#c98f4e";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(state.basketX - bw / 2 + 6, y + 9);
+  ctx.lineTo(state.basketX + bw / 2 - 6, y + 9);
+  ctx.moveTo(state.basketX - bw / 2 + 12, y + 18);
+  ctx.lineTo(state.basketX + bw / 2 - 12, y + 18);
+  ctx.stroke();
+  ctx.fillStyle = "#ffd23e";
+  ctx.font = "bold 15px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("LYCHEE", state.basketX, y + 22);
+}
+
+function drawHUD() {
+  ctx.fillStyle = "rgba(10, 4, 26, 0.55)";
+  ctx.fillRect(0, 0, W, 44);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 20px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Score  " + state.score, 14, 29);
+  ctx.textAlign = "center";
+  ctx.fillText("Time  " + Math.ceil(state.timeLeft) + "s", W / 2, 29);
+  ctx.textAlign = "right";
+  ctx.fillText("Lives  " + "♥".repeat(Math.max(0, state.lives)), W - 14, 29);
+}
+
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#241040");
+  g.addColorStop(1, "#3d1a63");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  for (const [cx, cy, r] of [[110, 90, 26], [600, 70, 32], [360, 130, 20], [520, 180, 16]]) {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(0, H - 18, W, 18);
+}
+
+function drawCenter(title, lines) {
+  ctx.fillStyle = "rgba(10, 4, 26, 0.72)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffd23e";
+  ctx.font = "bold 44px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(title, W / 2, H / 2 - 46);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "21px sans-serif";
+  lines.forEach((ln, i) => ctx.fillText(ln, W / 2, H / 2 + 2 + i * 32));
+}
+
+function reset() {
+  state.score = 0; state.lives = 3; state.misses = 0;
+  state.timeLeft = 60; state.elapsed = 0;
+  state.fruits = []; state.spawnT = 0;
+  state.basketX = W / 2;
+}
+
+function startGame() { reset(); state.mode = "play"; }
+
+function loseLife() {
+  state.lives -= 1;
+  if (state.lives <= 0) state.mode = "over";
+}
+
+function update(dt) {
+  if (state.mode === "over" && DEMO) {
+    state.overT = (state.overT || 0) + dt;
+    if (state.overT > 2.5) { state.overT = 0; startGame(); }
+    return;
+  }
+  if (state.mode !== "play") return;
+  state.elapsed += dt;
+  state.timeLeft -= dt;
+  if (state.timeLeft <= 0) { state.timeLeft = 0; state.mode = "over"; return; }
+  const speed = 340;
+  if (state.keys["ArrowLeft"]) state.basketX -= speed * dt;
+  if (state.keys["ArrowRight"]) state.basketX += speed * dt;
+  if (DEMO) {
+    // attract mode: chase the lowest good lychee, ignore rotten ones
+    let target = null;
+    for (const f of state.fruits) {
+      if (!f.rotten && (!target || f.y > target.y)) target = f;
+    }
+    if (target) {
+      const dx = target.x - state.basketX;
+      state.basketX += Math.max(-speed * dt, Math.min(speed * dt, dx));
+    }
+  }
+  state.basketX = Math.max(55, Math.min(W - 55, state.basketX));
+  state.spawnT -= dt;
+  if (state.spawnT <= 0) { spawnFruit(); state.spawnT = Math.max(0.28, 0.85 - state.elapsed * 0.008); }
+  const basketY = H - 44;
+  for (let i = state.fruits.length - 1; i >= 0; i--) {
+    const f = state.fruits[i];
+    f.wobble += dt * 3;
+    f.y += f.vy * dt;
+    f.x += Math.sin(f.wobble) * 22 * dt + f.vx * dt;
+    const caught = f.y + f.r >= basketY && f.y <= basketY + 26 &&
+      Math.abs(f.x - state.basketX) <= 55 + f.r * 0.5;
+    if (caught) {
+      if (f.rotten) loseLife();
+      else state.score += 10;
+      state.fruits.splice(i, 1);
+      continue;
+    }
+    if (f.y - f.r > H) {
+      if (!f.rotten) {
+        state.misses += 1;
+        if (state.misses >= 3) { state.misses = 0; loseLife(); }
+      }
+      state.fruits.splice(i, 1);
+    }
+  }
+}
+
+function render() {
+  drawBackground();
+  if (state.mode === "start") {
+    drawCenter("LYCHEE CATCH", [
+      "One prompt. One game. Built by an AI agent.",
+      "Catch the red lychees. Dodge the rotten ones.",
+      DEMO ? "Demo playing…" : "Press SPACE or click to start",
+    ]);
+    drawBasket();
+    return;
+  }
+  for (const f of state.fruits) drawLychee(f);
+  drawBasket();
+  drawHUD();
+  if (state.mode === "over") {
+    drawCenter("GAME OVER", [
+      "Score: " + state.score + "   •   Lychees caught, agent-built.",
+      DEMO ? "Replay? It restarts itself." : "Press R or click to play again",
+    ]);
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+addEventListener("keydown", (e) => {
+  state.keys[e.key] = true;
+  if (e.key === " " && state.mode === "start") { e.preventDefault(); startGame(); }
+  if ((e.key === "r" || e.key === "R") && state.mode === "over") startGame();
+  if (["ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
+});
+addEventListener("keyup", (e) => { state.keys[e.key] = false; });
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  state.basketX = ((e.clientX - rect.left) / rect.width) * W;
+});
+canvas.addEventListener("click", () => {
+  if (state.mode === "start" || state.mode === "over") startGame();
+});
+
+if (DEMO) startGame();
+window.__game = state; // exposed for automated smoke tests only
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
