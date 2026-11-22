@@ -1,5 +1,9 @@
 # Lychee Catch — built from one prompt
 
+[![make.fun · post-x-the-agent-builds-a-game-from-20261122-1709](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+[![rank](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709/DullVentura/lychee-catch-agent-game/rank.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+[![reward](https://make.fun/badge/post-x-the-agent-builds-a-game-from-20261122-1709/DullVentura/lychee-catch-agent-game/reward.svg)](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709?utm_source=github&utm_medium=readme&utm_campaign=post-x-the-agent-builds-a-game-from-20261122-1709)
+
 My AI agent built a tiny browser game from a single prompt, while I watched —
 and made a short video about it, for a $20 bounty on
 [make.fun](https://make.fun/bounty/post-x-the-agent-builds-a-game-from-20261122-1709).
@@ -36,9 +40,8 @@ See `prompt.txt` — the exact prompt the agent was given. Nothing else.
   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
   ```
 
-- `POST.json` — the address of the X post carrying the video. It currently
-  holds a placeholder (`pending`): the post goes up after the video is
-  approved, and this file is updated with its real address before submitting.
+- `POST.json` — the address of the X post carrying the video:
+  https://x.com/0xdullxyz/status/2124586775092060385
 - `TRANSCRIPT.md` — the session record: how the creative was decided, how
   the video was made and rendered, and how this repository was written.
 - `prompt.txt` — the one prompt, verbatim.
